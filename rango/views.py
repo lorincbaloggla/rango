@@ -2,6 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 
+from datetime import datetime
 from django.http import HttpResponse, HttpResponseRedirect
 from django.core.urlresolvers import reverse
 from django.contrib.auth import authenticate, login, logout
@@ -10,6 +11,7 @@ from rango.models import Category, Page
 from rango.forms import CategoryForm, PageForm, UserForm, UserProfileForm
 
 def index(request):
+    request.session.set_test_cookie()
     # Query the database for a list of ALL categories currently stored. # Order the categories by no. likes in descending order.
     # Retrieve the top 5 only - or all if less than 5.
     # Place the list in our context_dict dictionary
@@ -19,16 +21,31 @@ def index(request):
 
     context_dict = {'categories': category_list, 'pages': page_list}
 
+    visitor_cookie_handler(request)
+    context_dict['visits'] = request.session['visits']
+
+    response = render(request, 'rango/index.html', context=context_dict)
+    return response
     # Render the response and send it back!
-    return render(request, 'rango/index.html', context_dict)
+    #return render(request, 'rango/index.html', context_dict)
 
 def about(request):
+    if request.session.test_cookie_worked():
+        print("TEST COOKIE WORKED!")
+        request.session.delete_test_cookie()
     #context_dict = {'boldmessage': "We don't really need this..."}
     #return render(request, 'rango/about.html', context=context_dict)
 
     print(request.method)
     print(request.user)
-    return render(request, 'rango/about.html', {})
+
+    visitor_cookie_handler(request)
+    context_dict = {'visits': request.session['visits'],
+                              'last_visit': request.session['last_visit']}
+
+    response = render(request, 'rango/about.html', context=context_dict)
+    return response
+    #return render(request, 'rango/about.html', {})
 
     #response = HttpResponse("Rango says here is the about page.")
     #response.write("<br/> <a href='/rango/'>Index</a>")
@@ -205,3 +222,24 @@ def user_logout(request):
 def restricted(request):
     #return HttpResponse("Since you're logged in, you can see this text!")
     return render(request, 'rango/restricted.html', {})
+
+def get_server_side_cookie(request, cookie, default_val=None):
+    val = request.session.get(cookie)
+    if not val:
+        val = default_val
+    return val
+
+def visitor_cookie_handler(request):
+    visits = int(get_server_side_cookie(request, 'visits', '1'))
+
+    last_visit_cookie = get_server_side_cookie(request, 'last_visit', str(datetime.now()))
+    last_visit_time = datetime.strptime(last_visit_cookie[:-7], '%Y-%m-%d %H:%M:%S')
+
+    if (datetime.now() - last_visit_time).days > 0:
+        visits = visits + 1
+        request.session['last_visit'] = str(datetime.now())
+    else:
+        visits = 1
+        request.session['last_visit'] = last_visit_cookie
+
+    request.session['visits'] = visits
